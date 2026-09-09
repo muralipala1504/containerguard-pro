@@ -1,0 +1,19 @@
+[Unit]
+Description=ContainerGuard Dashboard
+After=network.target containerguard.service
+Wants=containerguard.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/ruser/containerguard-new
+Environment="PATH=/home/ruser/containerguard-new/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ruser/containerguard-new/venv/bin/python /home/ruser/containerguard-new/dashboard/app.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/containerguard-dashboard.log
+StandardError=append:/var/log/containerguard-dashboard-error.log
+
+[Install]
+WantedBy=multi-user.target

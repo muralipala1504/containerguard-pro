@@ -1,0 +1,19 @@
+[Unit]
+Description=ContainerGuard Agent - Autonomous Docker Monitoring
+After=docker.service network.target
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/ruser/containerguard-new
+Environment="PATH=/home/ruser/containerguard-new/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ruser/containerguard-new/venv/bin/python /home/ruser/containerguard-new/agent/runner.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/containerguard.log
+StandardError=append:/var/log/containerguard-error.log
+
+[Install]
+WantedBy=multi-user.target
