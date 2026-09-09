@@ -1,0 +1,3 @@
+"""
+ContainerGuard Pro — Agent module
+"""
