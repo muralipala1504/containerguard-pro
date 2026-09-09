@@ -7,7 +7,7 @@ if PRO_PATH not in sys.path:
     sys.path.insert(0, PRO_PATH)
 
 # Also add the current directory
-CURRENT_PATH = "/home/ruser/containerguard-new"
+CURRENT_PATH = "/home/ruser/containerguard-pro"
 if CURRENT_PATH not in sys.path:
     sys.path.insert(0, CURRENT_PATH)
 
