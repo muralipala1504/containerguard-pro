@@ -83,9 +83,6 @@ if [[ -d "$INSTALL_DIR" ]]; then
         rm -rf "$INSTALL_DIR"
     else
 
-    # Apply SELinux context to wrapper scripts
-    sudo chcon -t bin_t "$INSTALL_DIR/agent/run-pro.sh" 2>/dev/null || true
-    sudo chcon -t bin_t "$INSTALL_DIR/dashboard/run.sh" 2>/dev/null || true
         print_error "Installation cancelled."
         exit 1
     fi
@@ -110,6 +107,8 @@ pip install flask flask-login authlib > /dev/null 2>&1
 if command -v getenforce &> /dev/null && [[ $(getenforce) == "Enforcing" ]]; then
     print_info "Applying SELinux context..."
     sudo chcon -R -t bin_t "$INSTALL_DIR"/venv/bin/
+    sudo chcon -t bin_t "$INSTALL_DIR/agent/run-pro.sh" 2>/dev/null || true
+    sudo chcon -t bin_t "$INSTALL_DIR/dashboard/run.sh" 2>/dev/null || true
 fi
 
 # Create Multi-Host config
@@ -136,18 +135,6 @@ sudo systemctl enable containerguard-pro
 sudo systemctl enable containerguard-dashboard
 sudo systemctl start containerguard-pro
 sudo systemctl start containerguard-dashboard
-print_success "Services installed and started"
-
-sudo systemctl daemon-reload
-sudo systemctl enable containerguard-pro
-sudo systemctl start containerguard-pro
-
-print_info "Installing dashboard service..."
-sudo cp deploy/containerguard-dashboard.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable containerguard-dashboard
-sudo systemctl start containerguard-dashboard
-print_success "Dashboard service started"
 
 print_info "Configuring firewall for dashboard..."
 if ! systemctl is-active --quiet firewalld 2>/dev/null; then
