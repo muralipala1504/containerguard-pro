@@ -126,27 +126,17 @@ HOSTSEOF
 
 # Create systemd service
 print_info "Installing systemd service..."
-sudo tee /etc/systemd/system/containerguard-pro.service > /dev/null << 'SERVICEEOF'
-[Unit]
-Description=ContainerGuard Pro - Autonomous Docker Agent
-After=docker.service network.target
-Wants=docker.service
-
-[Service]
-Type=simple
-User=$INSTALL_USER
-Group=$INSTALL_USER
-WorkingDirectory=/home/ruser/containerguard-pro
-Environment="PATH=/home/ruser/containerguard-pro/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/ruser/containerguard-pro/venv/bin/python /home/ruser/containerguard-pro/agent/runner.py
-Restart=always
-RestartSec=10
-StandardOutput=append:/var/log/containerguard-pro.log
-StandardError=append:/var/log/containerguard-pro-error.log
-
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
+print_info "Installing systemd services..."
+sudo cp deploy/containerguard.service /etc/systemd/system/containerguard-pro.service
+sudo cp deploy/containerguard-dashboard.service /etc/systemd/system/containerguard-dashboard.service
+sudo sed -i "s/\$INSTALL_USER/$INSTALL_USER/g" /etc/systemd/system/containerguard-pro.service
+sudo sed -i "s/\$INSTALL_USER/$INSTALL_USER/g" /etc/systemd/system/containerguard-dashboard.service
+sudo systemctl daemon-reload
+sudo systemctl enable containerguard-pro
+sudo systemctl enable containerguard-dashboard
+sudo systemctl start containerguard-pro
+sudo systemctl start containerguard-dashboard
+print_success "Services installed and started"
 
 sudo systemctl daemon-reload
 sudo systemctl enable containerguard-pro
