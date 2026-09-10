@@ -109,6 +109,22 @@ if command -v getenforce &> /dev/null && [[ $(getenforce) == "Enforcing" ]]; the
     sudo chcon -R -t bin_t "$INSTALL_DIR"/venv/bin/
     sudo chcon -t bin_t "$INSTALL_DIR/agent/run-pro.sh" 2>/dev/null || true
     sudo chcon -t bin_t "$INSTALL_DIR/dashboard/run.sh" 2>/dev/null || true
+
+# Create log files with proper permissions
+print_info "Creating log files..."
+sudo touch /var/log/containerguard-pro.log
+sudo touch /var/log/containerguard-pro-error.log
+sudo touch /var/log/containerguard-dashboard.log
+sudo touch /var/log/containerguard-dashboard-error.log
+sudo chown $INSTALL_USER:$INSTALL_USER /var/log/containerguard-pro.log
+sudo chown $INSTALL_USER:$INSTALL_USER /var/log/containerguard-pro-error.log
+sudo chown $INSTALL_USER:$INSTALL_USER /var/log/containerguard-dashboard.log
+sudo chown $INSTALL_USER:$INSTALL_USER /var/log/containerguard-dashboard-error.log
+sudo chmod 644 /var/log/containerguard-pro.log
+sudo chmod 644 /var/log/containerguard-pro-error.log
+sudo chmod 644 /var/log/containerguard-dashboard.log
+sudo chmod 644 /var/log/containerguard-dashboard-error.log
+print_success "Log files created"
 fi
 
 # Create Multi-Host config
