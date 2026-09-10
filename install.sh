@@ -100,8 +100,6 @@ print_info "Installing Python dependencies..."
 pip install --upgrade pip > /dev/null 2>&1
 pip install -r requirements.txt
 
-print_info "Installing OAuth dependencies for GitHub authentication..."
-pip install flask flask-login authlib > /dev/null 2>&1
 
 # Apply SELinux context
 if command -v getenforce &> /dev/null && [[ $(getenforce) == "Enforcing" ]]; then
