@@ -63,9 +63,7 @@ else
     DOCKER_VERSION=$(docker --version | cut -d" " -f3 | tr -d ",")
     print_success "Docker found: $DOCKER_VERSION"
 fi
-fi
 print_success "Docker found: $(docker --version | cut -d' ' -f3 | tr -d ',')"
-
 # Check Python
 if ! command -v python3 &> /dev/null; then
     print_error "Python 3 is not installed."
