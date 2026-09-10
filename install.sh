@@ -127,7 +127,7 @@ HOSTSEOF
 # Create systemd service
 print_info "Installing systemd service..."
 print_info "Installing systemd services..."
-sudo cp deploy/containerguard.service /etc/systemd/system/containerguard-pro.service
+sudo cp deploy/containerguard-pro.service /etc/systemd/system/containerguard-pro.service
 sudo cp deploy/containerguard-dashboard.service /etc/systemd/system/containerguard-dashboard.service
 sudo sed -i "s/\$INSTALL_USER/$INSTALL_USER/g" /etc/systemd/system/containerguard-pro.service
 sudo sed -i "s/\$INSTALL_USER/$INSTALL_USER/g" /etc/systemd/system/containerguard-dashboard.service
