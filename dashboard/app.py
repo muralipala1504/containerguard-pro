@@ -43,6 +43,15 @@ def get_container_status(host_name, host_url):
     except Exception as e:
         return [{"host": host_name, "name": "Error", "status": str(e), "image": "", "id": ""}]
 
+def check_host_status(host_url):
+    """Check if a host is reachable"""
+    try:
+        client = docker.DockerClient(base_url=host_url, timeout=3)
+        client.ping()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
 def auto_heal_on_host(host_name, host_url):
     """Auto-heal containers on a specific host"""
     actions = []
@@ -80,7 +89,12 @@ def refresh():
     # Build node text
     node_text = "## 🖥️ Nodes\n\n"
     for host in hosts:
-        node_text += f"✅ {host['name']}: Connected\n"
+        is_up, error = check_host_status(host["host"])
+        if is_up:
+            host_containers = [c for c in all_containers if c["host"] == host["name"] and c["name"] != "Error"]
+            node_text += f"✅ **{host['name']}**: Connected ({len(host_containers)} containers)\n"
+        else:
+            node_text += f"❌ **{host['name']}**: Disconnected\n"
     
     # Build container text
     pod_text = "## 📦 Containers\n\n"
