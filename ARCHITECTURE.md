@@ -6,103 +6,112 @@ Technical design and data flow documentation for ContainerGuard Pro.
 
 ## 📋 Overview
 
-ContainerGuard Pro is a lightweight, autonomous Docker monitoring and healing agent built with Python. It operates as a systemd service, continuously monitoring containers across multiple hosts and taking corrective actions when issues are detected.
+ContainerGuard Pro is a lightweight, autonomous Docker monitoring and healing agent built with Python. It runs as two systemd services on a control node:
+
+| Service | Purpose |
+|---------|---------|
+| `containerguard-pro` | Monitors Docker hosts, auto-heals containers |
+| `containerguard-dashboard` | Gradio web UI for monitoring and control |
 
 ---
 
-## 🎯 Core Components
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ContainerGuard Pro System │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ User Interface Layer │ │
-│ │ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ │ │
-│ │ │ Gradio │ │ CLI Commands │ │ REST API │ │ │
-│ │ │ Dashboard │ │ (Manual) │ │ (Future) │ │ │
-│ │ │ Port: 7860 │ │ │ │ │ │ │
-│ │ └─────────────────┘ └─────────────────┘ └─────────────────┘ │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-│ │ │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ Agent Core Layer │ │
-│ │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │ │
-│ │ │ Scheduler │→ │ Decision │→ │ Action │ │ │
-│ │ │ (Timer) │ │ Engine │ │ Executor │ │ │
-│ │ │ 30s interval│ │ (Rules) │ │ (Docker) │ │ │
-│ │ └─────────────┘ └─────────────┘ └─────────────┘ │ │
-│ │ │ │
-│ │ ┌─────────────────────────────────────────────────────────────┐ │ │
-│ │ │ Persistent History (JSON) │ │ │
-│ │ │ /tmp/containerguard_history.json │ │ │
-│ │ │ - All agent actions │ │ │
-│ │ │ - Timestamps │ │ │
-│ │ │ - Success/failure status │ │ │
-│ │ └─────────────────────────────────────────────────────────────┘ │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-│ │ │
-│ ┌─────────────────────────────────────────────────────────────────────┐ │
-│ │ Integration Layer │ │
-│ │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │ │
-│ │ │ Docker │ │ Slack │ │ Systemd │ │ │
-│ │ │ SDK │ │ Alerts │ │ Service │ │ │
-│ │ │ (Multi-Host)│ │ (Pro) │ │ (Daemon) │ │ │
-│ │ └─────────────┘ └─────────────┘ └─────────────┘ │ │
-│ └─────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-│
-▼
-┌─────────────────────────────┐
-│ Multiple Docker Engines │
-│ (Local + Remote Hosts) │
-└─────────────────────────────┘
+## 🎯 System Architecture
 
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      ContainerGuard Pro System                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    User Interface Layer                         │   │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │   │
+│  │  │   Gradio        │  │   CLI Commands  │  │   REST API      │ │   │
+│  │  │   Dashboard     │  │   (Manual)      │  │   (Future)      │ │   │
+│  │  │   Port: 7860    │  │                 │  │                 │ │   │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                    │                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Agent Core Layer                             │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │   │
+│  │  │  Scheduler  │→ │  Decision   │→ │  Action     │            │   │
+│  │  │  (30s)      │  │  Engine     │  │  Executor   │            │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘            │   │
+│  │                                                                 │   │
+│  │  ┌─────────────────────────────────────────────────────────┐   │   │
+│  │  │           Persistent History (JSON)                     │   │   │
+│  │  │  /tmp/containerguard_history.json                       │   │   │
+│  │  │  /tmp/containerguard_audit.json                         │   │   │
+│  │  └─────────────────────────────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                    │                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    Integration Layer                            │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │   │
+│  │  │   Docker    │  │   Slack     │  │   Systemd   │            │   │
+│  │  │   SDK       │  │   Alerts    │  │   Service   │            │   │
+│  │  │ (Multi-Host)│  │   (Pro)     │  │   (Daemon)  │            │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘            │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                    ┌─────────────────────────────┐
+                    │   Multiple Docker Engines   │
+                    │   (Local + Remote Hosts)    │
+                    └─────────────────────────────┘
+```
 
 ---
 
 ## 📂 Project Structure
+
+```
 containerguard-pro/
 ├── agent/
-│ ├── actions.py # Core action execution (restart, cleanup)
-│ ├── core.py # Main agent engine
-│ ├── runner.py # Entry point for systemd service
-│ ├── run-pro.sh # Wrapper script with SELinux and env setup
-│ └── init.py
+│   ├── actions.py          # Core action execution (restart, cleanup)
+│   ├── core.py             # Main agent engine
+│   ├── runner.py           # Entry point for systemd service
+│   ├── run-pro.sh          # Wrapper script with SELinux and env setup
+│   └── __init__.py
 ├── dashboard/
-│ ├── app.py # Gradio web dashboard
-│ ├── auth_dashboard.py # GitHub OAuth integration
-│ └── run.sh # Dashboard wrapper script
+│   ├── app.py              # Gradio web dashboard
+│   ├── auth_dashboard.py   # GitHub OAuth integration
+│   └── run.sh              # Dashboard wrapper script
 ├── deploy/
-│ ├── containerguard.service # Systemd service for agent
-│ └── containerguard-dashboard.service # Systemd service for dashboard
+│   ├── containerguard-pro.service       # Systemd service for agent
+│   └── containerguard-dashboard.service # Systemd service for dashboard
 ├── pro_agent/
-│ ├── slack.py # Slack alert integration
-│ └── cleanup.py # Auto-cleanup functionality
+│   ├── slack.py            # Slack alert integration
+│   └── cleanup.py          # Auto-cleanup functionality
 ├── license/
-│ └── check.py # License validation
-├── install.sh # One-line installer
-├── requirements.txt # Python dependencies
-└── .env # Environment variables (never commit!)
-
+│   └── check.py            # License validation
+├── install.sh              # One-line installer
+├── requirements.txt        # Python dependencies
+└── .env                    # Environment variables (never commit!)
+```
 
 ---
 
 ## 🐳 Multi-Host Architecture
 
-ContainerGuard Pro supports monitoring multiple Docker hosts simultaneously through a centralized configuration file.
+ContainerGuard Pro supports monitoring multiple Docker hosts through a centralized configuration file.
 
 ### Configuration File (`/etc/containerguard/hosts.conf`)
 
 ```json
 {
   "hosts": [
-    {"name": "vm1-agent", "host": "unix:///var/run/docker.sock"},
+    {"name": "local", "host": "unix:///var/run/docker.sock"},
     {"name": "vm2-worker", "host": "tcp://192.168.217.165:2375"},
     {"name": "vm3-worker", "host": "tcp://192.168.217.166:2375"}
   ]
 }
-Multi-Host Data Flow
+```
 
+### Multi-Host Data Flow
+
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    ContainerGuard Agent                        │
 │                                                                 │
@@ -123,24 +132,31 @@ Multi-Host Data Flow
 │  • Container B  ││  • Container Y  ││  • Container N  │
 │  • Container C  ││  • Container Z  ││  • Container O  │
 └─────────────────┘└─────────────────┘└─────────────────┘
+```
 
-🔐 SELinux Integration
+---
+
+## 🔐 SELinux Integration
+
 ContainerGuard Pro is fully compatible with SELinux-enforcing systems (AlmaLinux, RHEL).
 
-SELinux Context Requirements
-File/Directory	Context	Command
-venv/bin/*	bin_t	sudo chcon -R -t bin_t venv/bin/
-agent/run-pro.sh	bin_t	sudo chcon -t bin_t agent/run-pro.sh
-dashboard/run.sh	bin_t	sudo chcon -t bin_t dashboard/run.sh
-Why Wrapper Scripts?
+### SELinux Context Requirements
+
+| File/Directory | Context | Command |
+|----------------|---------|---------|
+| `venv/bin/*` | `bin_t` | `sudo chcon -R -t bin_t venv/bin/` |
+| `agent/run-pro.sh` | `bin_t` | `sudo chcon -t bin_t agent/run-pro.sh` |
+| `dashboard/run.sh` | `bin_t` | `sudo chcon -t bin_t dashboard/run.sh` |
+
+### Why Wrapper Scripts?
+
 Systemd services running on SELinux-enforcing systems need proper context. The wrapper scripts:
 
-Source environment variables (.env file)
+1. Source environment variables (`.env` file)
+2. Activate the virtual environment
+3. Execute the Python scripts with correct SELinux context
 
-Activate the virtual environment
-
-Execute the Python scripts with correct SELinux context
-
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                  Systemd Service Flow                          │
 │                                                                 │
@@ -154,10 +170,15 @@ Execute the Python scripts with correct SELinux context
 │  │  - Executes python agent/runner.py                     │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-🔄 Data Flow
-1. Agent Monitoring Cycle
+---
 
+## 🔄 Data Flow
+
+### 1. Agent Monitoring Cycle
+
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Monitoring Cycle (30s)                      │
 ├─────────────────────────────────────────────────────────────────┤
@@ -188,8 +209,8 @@ Execute the Python scripts with correct SELinux context
 │         │                                                       │
 │         ▼                                                       │
 │  ┌─────────────┐                                               │
-│  │  Log Action │  → Write to /tmp/containerguard_history.json │
-│  │  to History │  → Send Slack alert (if Pro enabled)         │
+│  │  Log Action │  → Write to /tmp/containerguard_audit.json   │
+│  │  to History │  → Send Slack alert (if Pro enabled)        │
 │  └─────────────┘                                               │
 │         │                                                       │
 │         ▼                                                       │
@@ -197,9 +218,11 @@ Execute the Python scripts with correct SELinux context
 │  │  Wait 30s   │  → Repeat cycle                              │
 │  └─────────────┘                                               │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-2. Dashboard Data Flow
+### 2. Dashboard Data Flow
 
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Dashboard Data Flow                         │
 ├─────────────────────────────────────────────────────────────────┤
@@ -209,23 +232,29 @@ Execute the Python scripts with correct SELinux context
 │                    ▼                                            │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │  Gradio Dashboard (app.py)                              │   │
-│  │  - Reads /tmp/containerguard_history.json              │   │
+│  │  - Reads /tmp/containerguard_audit.json                │   │
 │  │  - Fetches live container status from Docker           │   │
 │  │  - Displays unified view of all hosts                  │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                    │                                            │
 │                    ▼                                            │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  History File (JSON)                                    │   │
-│  │  /tmp/containerguard_history.json                      │   │
+│  │  Audit Log (JSON)                                       │   │
+│  │  /tmp/containerguard_audit.json                        │   │
 │  │  - Auto-heal actions                                    │   │
 │  │  - Manual restarts                                      │   │
 │  │  - Cleanup operations                                   │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-💎 Pro Features Architecture
-License Validation
+---
+
+## 💎 Pro Features Architecture
+
+### License Validation
+
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    License Check Flow                          │
 ├─────────────────────────────────────────────────────────────────┤
@@ -236,9 +265,11 @@ License Validation
 │  4. Check expiration date                                     │
 │  5. Enable/disable Pro features                               │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-Slack Alerts (Pro)
+### Slack Alerts (Pro)
 
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Slack Alert Flow                            │
 ├─────────────────────────────────────────────────────────────────┤
@@ -249,9 +280,11 @@ Slack Alerts (Pro)
 │  4. Send POST request to Slack webhook                         │
 │  5. Log success/failure to agent log                           │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-Auto-Cleanup (Pro)
+### Auto-Cleanup (Pro)
 
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Auto-Cleanup Flow                           │
 ├─────────────────────────────────────────────────────────────────┤
@@ -263,11 +296,17 @@ Auto-Cleanup (Pro)
 │  5. Remove build cache                                         │
 │  6. Log cleanup results                                        │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-🔧 Service Management
-Systemd Service Configuration
-Agent Service (/etc/systemd/system/containerguard.service):
+---
 
+## 🔧 Service Management
+
+### Systemd Service Configuration
+
+**Agent Service** (`/etc/systemd/system/containerguard-pro.service`):
+
+```ini
 [Unit]
 Description=ContainerGuard Agent - Autonomous Docker Monitoring
 After=docker.service network.target
@@ -275,33 +314,35 @@ Wants=docker.service
 
 [Service]
 Type=simple
-User=ruser
-Group=ruser
-WorkingDirectory=/home/ruser/containerguard-pro
-Environment="PATH=/home/ruser/containerguard-pro/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/ruser/containerguard-pro/agent/run-pro.sh
+User=$INSTALL_USER
+Group=$INSTALL_USER
+WorkingDirectory=/home/$INSTALL_USER/containerguard-pro
+Environment="PATH=/home/$INSTALL_USER/containerguard-pro/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/$INSTALL_USER/containerguard-pro/agent/run-pro.sh
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/containerguard.log
-StandardError=append:/var/log/containerguard-error.log
+StandardOutput=append:/var/log/containerguard-pro.log
+StandardError=append:/var/log/containerguard-pro-error.log
 
 [Install]
 WantedBy=multi-user.target
+```
 
-Dashboard Service (/etc/systemd/system/containerguard-dashboard.service):
+**Dashboard Service** (`/etc/systemd/system/containerguard-dashboard.service`):
 
+```ini
 [Unit]
 Description=ContainerGuard Dashboard
-After=network.target containerguard.service
-Wants=containerguard.service
+After=network.target containerguard-pro.service
+Wants=containerguard-pro.service
 
 [Service]
 Type=simple
-User=ruser
-Group=ruser
-WorkingDirectory=/home/ruser/containerguard-pro
-Environment="PATH=/home/ruser/containerguard-pro/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/ruser/containerguard-pro/dashboard/run.sh
+User=$INSTALL_USER
+Group=$INSTALL_USER
+WorkingDirectory=/home/$INSTALL_USER/containerguard-pro
+Environment="PATH=/home/$INSTALL_USER/containerguard-pro/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/$INSTALL_USER/containerguard-pro/dashboard/run.sh
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/containerguard-dashboard.log
@@ -309,59 +350,73 @@ StandardError=append:/var/log/containerguard-dashboard-error.log
 
 [Install]
 WantedBy=multi-user.target
+```
 
-📊 Data Persistence
+---
 
-History File Schema (/tmp/containerguard_history.json)
+## 📊 Data Persistence
 
-{
-  "history": [
-    {
-      "timestamp": "2026-09-09T05:35:57.986681",
-      "action": "restart",
-      "container": "test-postgres",
-      "host": "vm2-worker",
-      "status": "success",
-      "details": "Container restarted successfully"
-    }
-  ]
-}
+### Audit Log Schema (`/tmp/containerguard_audit.json`)
 
-Audit Log Schema (/tmp/containerguard_audit.json)
-
+```json
 {
   "audit": [
     {
-      "timestamp": "2026-09-09T05:35:57.986681",
-      "user": "user",
-      "action": "restart",
-      "resource": "test-nginx",
-      "status": "success",
-      "source": "web-dashboard"
+      "timestamp": "2026-09-11T07:18:44.566260",
+      "user": "system",
+      "action": "auto-heal",
+      "resource": "vm2-worker:test-nginx",
+      "details": "Container auto-restarted",
+      "status": "success"
     }
   ]
 }
+```
 
-🔒 Security Considerations
-.env files never committed - Added to .gitignore
+### Action History Schema (`/tmp/containerguard_history.json`)
 
-SELinux enforcement - Proper contexts applied
+```json
+{
+  "history": [
+    {
+      "timestamp": "2026-09-11T05:35:57.986681",
+      "action": "restart",
+      "container": "test-postgres",
+      "host": "vm2-worker",
+      "status": "success"
+    }
+  ]
+}
+```
 
-User separation - Services run as ruser, not root
+---
 
-Multi-Host authentication - Use TLS for remote Docker connections
+## 🔒 Security Considerations
 
-Slack webhooks - Stored in .env, not in code
+1. **.env files never committed** - Added to `.gitignore`
+2. **SELinux enforcement** - Proper contexts applied via `chcon`
+3. **User separation** - Services run as installing user, not `root`
+4. **Multi-Host authentication** - Use TLS for remote Docker connections in production
+5. **Slack webhooks** - Stored in `.env`, not in code
+6. **GitHub OAuth** - Client secrets in `.env`
 
-📈 Performance Characteristics
-Metric	Value
-Memory Usage	~15-20 MB per agent
-CPU Usage	~1-2% during monitoring
-API Calls	1 per host per 30s
-Log Size	~50 MB/day (rotated)
-History File	~1 MB per 1000 actions
-🧪 Testing Architecture
+---
 
+## 📈 Performance Characteristics
+
+| Metric | Value |
+|--------|-------|
+| **Memory Usage** | ~15-20 MB per agent |
+| **CPU Usage** | ~1-2% during monitoring |
+| **API Calls** | 1 per host per 30s |
+| **Log Size** | ~50 MB/day (rotated) |
+| **Audit File** | ~1 MB per 1000 actions |
+
+---
+
+## 🧪 Testing Architecture
+
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Test Environment                            │
 ├─────────────────────────────────────────────────────────────────┤
@@ -379,14 +434,26 @@ History File	~1 MB per 1000 actions
 │  │  vm2-worker (Worker)                                   │   │
 │  │  - Test containers running                              │   │
 │  │  - Docker API exposed on port 2375                     │   │
-│  │  - Monitor by ContainerGuard                           │   │
+│  │  - Monitored by ContainerGuard                         │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
+```
 
-🚀 Deployment Options
-Method	Command	Best For
-VM (install.sh)	curl ... | bash	Production VMs, systemd integration
-Docker Compose	docker compose up -d	Container environments, quick testing
-Manual	Step-by-step install	Custom configurations, debugging
+---
 
+## 🚀 Deployment Options
 
+| Method | Command | Best For |
+|--------|---------|----------|
+| **VM (install.sh)** | `curl ... \| bash` | Production VMs, systemd integration |
+| **Docker Compose** | `docker compose up -d` | Container environments, quick testing |
+| **Manual** | Step-by-step install | Custom configurations, debugging |
+
+---
+
+## 📚 Related Documentation
+
+- **README.md** - Project overview
+- **INSTALL.md** - Installation guide
+- **API.md** - API reference
+- **TROUBLESHOOTING.md** - Common issues and fixes
