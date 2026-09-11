@@ -128,14 +128,42 @@ fi
 # Create Multi-Host config
 print_info "Configuring Multi-Host..."
 sudo mkdir -p /etc/containerguard
-sudo tee /etc/containerguard/hosts.conf << 'HOSTSEOF'
+
+echo ""
+print_info "Do you want to monitor a remote Docker host? (Multi-Host mode)"
+echo "  1) Yes - configure remote worker now"
+echo "  2) No - local Docker only (can configure later)"
+read -p "Choose option (1-2): " MULTIHOST_OPTION </dev/tty
+
+if [[ "$MULTIHOST_OPTION" == "1" ]]; then
+    read -p "Enter remote host name (e.g., vm2-worker): " REMOTE_NAME </dev/tty
+    read -p "Enter remote Docker IP (e.g., 192.168.217.165): " REMOTE_IP </dev/tty
+
+    print_info "Testing connection to $REMOTE_IP:2375..."
+    if curl -s --max-time 5 "http://$REMOTE_IP:2375/version" > /dev/null 2>&1; then
+        print_success "✅ Connected to $REMOTE_NAME"
+    else
+        print_warning "⚠️  Cannot reach $REMOTE_IP:2375 - saving config anyway"
+    fi
+    sudo tee /etc/containerguard/hosts.conf << HOSTSEOF
 {
   "hosts": [
     {"name": "local", "host": "unix:///var/run/docker.sock"},
-    {"name": "remote", "host": "tcp://192.168.217.170:2375"}
+    {"name": "$REMOTE_NAME", "host": "tcp://$REMOTE_IP:2375"}
   ]
 }
 HOSTSEOF
+    print_success "Multi-Host configuration saved"
+else
+    print_info "Using local Docker only"
+    sudo tee /etc/containerguard/hosts.conf << 'HOSTSEOF'
+{
+  "hosts": [
+    {"name": "local", "host": "unix:///var/run/docker.sock"}
+  ]
+}
+HOSTSEOF
+fi
 
 # Create systemd service
 print_info "Installing systemd service..."
